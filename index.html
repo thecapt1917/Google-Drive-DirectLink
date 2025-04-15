@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drive Direct Link Generator</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0 }
+      to { opacity: 1 }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1 }
+      to { opacity: 0 }
+    }
+
+    .fade-enter-active,
+    .fade-leave-active {
+      transition: opacity 0.5s ease;
+    }
+
+    .fade-enter-from,
+    .fade-leave-to {
+      opacity: 0;
+    }
+
+    .fade-enter-to,
+    .fade-leave-from {
+      opacity: 1;
+    }
+
+    input::placeholder {
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <transition name="fade">
+      <div :class="isDark ? 'bg-[#0e0e0e] text-white' : 'bg-[#f5f5f5] text-black'"
+           class="min-h-screen flex items-center justify-center px-4 py-10 transition-all duration-300">
+        <div :class="[
+            isDark ? 'bg-[#1a1a1a] text-white border-[#2c2c2c]' : 'bg-white text-black border-gray-300',
+            'p-8 rounded-2xl w-full max-w-xl shadow-2xl space-y-6 border transition-all duration-300 relative'
+          ]">
+
+          <!-- Theme Toggle -->
+          <div class="absolute top-4 right-4">
+            <button
+              @click="toggleTheme"
+              :class="[
+                isDark ? 'bg-yellow-400 text-black' : 'bg-gray-800 text-white',
+                'px-3 py-1 rounded-md text-sm font-semibold transition-all duration-200'
+              ]"
+            >
+              {{ isDark ? '☀ Light' : '🌙 Dark' }}
+            </button>
+          </div>
+
+          <h1 :class="[isDark ? 'text-yellow-400' : 'text-yellow-600']"
+              class="text-3xl font-semibold text-center tracking-wide">
+            Google Drive Direct Link Generator
+          </h1>
+
+          <input
+            v-model="driveLink"
+            type="text"
+            placeholder="Paste your Google Drive link here..."
+            :class="[
+              isDark
+                ? 'bg-[#111] text-white border-[#333] focus:ring-yellow-400'
+                : 'bg-gray-100 text-black border-gray-300 focus:ring-yellow-500',
+              'w-full px-5 py-3 rounded-md border focus:outline-none focus:ring-2 transition'
+            ]"
+          />
+
+          <button
+            @click="generateLink"
+            :class="[
+              'w-full font-semibold py-3 rounded-md shadow-lg transition-all duration-300 disabled:opacity-60',
+              isDark
+                ? 'bg-yellow-400 hover:bg-yellow-500 text-black'
+                : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+            ]"
+            :disabled="loading"
+          >
+            <span v-if="!loading">⚡ Generate Direct Link</span>
+            <span v-else class="animate-pulse">⏳ Generating...</span>
+          </button>
+
+          <transition name="fade">
+            <div v-if="directLink && !showErrorToast"
+                 :class="[
+                   isDark ? 'bg-[#111] border-yellow-600 text-yellow-100' : 'bg-yellow-100 border-yellow-400 text-yellow-800',
+                   'p-4 rounded-md border mt-4 font-mono text-sm break-all'
+                 ]">
+              {{ directLink }}
+              <button
+                @click="copyToClipboard"
+                :class="[
+                  isDark
+                    ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                    : 'bg-yellow-600 hover:bg-yellow-700 text-white',
+                  'mt-3 px-4 py-2 rounded text-sm font-semibold shadow transition block'
+                ]"
+              >
+                📋 Copy to Clipboard
+              </button>
+            </div>
+          </transition>
+
+          <p class="text-xs text-gray-500 text-center pt-4">
+            Made with ❤️ using Vue & TailwindCSS
+          </p>
+
+          <!-- Toast Notification (for successful copy) -->
+          <transition name="fade">
+            <div v-if="showToast"
+                 class="fixed bottom-6 right-6 bg-yellow-500 text-black px-4 py-3 rounded-lg shadow-lg text-sm font-semibold z-50">
+              ✅ Link copied to clipboard!
+            </div>
+          </transition>
+
+          <!-- Error Toast Notification (for invalid URL) -->
+          <transition name="fade">
+            <div v-if="showErrorToast"
+                 class="fixed bottom-6 right-6 bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-semibold z-50">
+              ⚠️ Invalid Google Drive URL!
+            </div>
+          </transition>
+
+          <!-- Empty Input Toast Notification -->
+          <transition name="fade">
+            <div v-if="showEmptyInputToast"
+                 class="fixed bottom-6 right-6 bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-semibold z-50">
+              ⚠️ Please enter a Google Drive link!
+            </div>
+          </transition>
+
+        </div>
+      </div>
+    </transition>
+  </div>
+
+  <script>
+    const { createApp } = Vue
+
+    createApp({
+      data() {
+        return {
+          driveLink: '',
+          directLink: '',
+          loading: false,
+          showToast: false,
+          showErrorToast: false,
+          showEmptyInputToast: false,
+          isDark: true, // Default theme is dark
+          errorTimeout: null, // To handle the timeout for clearing the error
+        }
+      },
+      methods: {
+        generateLink() {
+          // Check if the input is empty
+          if (!this.driveLink.trim()) {
+            this.showEmptyInputToast = true
+            setTimeout(() => this.showEmptyInputToast = false, 3000) // Hide after 3 seconds
+            return
+          }
+
+          this.loading = true
+          this.directLink = ''
+          this.showErrorToast = false
+
+          setTimeout(() => {
+            const fileId = this.extractFileId(this.driveLink)
+            if (fileId) {
+              this.directLink = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`
+            } else {
+              this.directLink = ''
+              this.showErrorToast = true
+              setTimeout(() => {
+                this.showErrorToast = false
+                // Only clear the textbox if the user hasn't fixed the error
+                if (this.driveLink && !this.showErrorToast) {
+                  this.driveLink = ''
+                }
+              }, 3000) // Error toast disappears after 3 seconds
+            }
+            this.loading = false
+
+            // Auto-clear the input and result after 15 seconds, but only if there's no error
+            setTimeout(() => {
+              if (!this.showErrorToast) {
+                this.driveLink = ''
+                this.directLink = ''
+              }
+            }, 15000)
+          }, 700)
+        },
+
+        extractFileId(url) {
+          const patterns = [
+            /\/d\/([a-zA-Z0-9_-]{25,})/,
+            /id=([a-zA-Z0-9_-]{25,})/,
+            /file\/d\/([a-zA-Z0-9_-]{25,})/,
+            /^([a-zA-Z0-9_-]{25,})$/
+          ]
+          for (const pattern of patterns) {
+            const match = url.match(pattern)
+            if (match && match[1]) return match[1]
+          }
+          return null
+        },
+
+        copyToClipboard() {
+          const el = document.createElement('textarea')
+          el.value = this.directLink
+          document.body.appendChild(el)
+          el.select()
+          document.execCommand('copy')
+          document.body.removeChild(el)
+
+          this.showToast = true
+          setTimeout(() => this.showToast = false, 2000)
+        },
+
+        toggleTheme() {
+          this.isDark = !this.isDark
+        }
+      }
+    }).mount('#app')
+  </script>
+</body>
+</html>
